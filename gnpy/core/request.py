@@ -385,7 +385,9 @@ def propagate(path, req, equipment):
         req.power, req.spacing)
     for el in path:
         si = el(si)
+        print(el)
     path[-1].update_snr(req.tx_osnr, equipment['Roadm']['default'].add_drop_osnr)
+    print(path[-1])
     return path
 
 def propagate2(path, req, equipment):

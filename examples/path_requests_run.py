@@ -552,6 +552,8 @@ class GnpyAPI(Resource):
         except ServiceError as this_e:
             msg = f'Service error: {this_e}'
             return {"result": msg}, 400
+    def head(self):
+        return 200
 
 API.add_resource(GnpyAPI, '/gnpy/api/v1.0/files', endpoint='files')
 
