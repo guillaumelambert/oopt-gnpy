@@ -587,7 +587,7 @@ def main(args):
     #
     if ((args.rest == 1) and (args.output is None)):
         print('you have chosen the rest mode')
-        APP.run(host='0.0.0.0', port=5000, debug=True)
+        APP.run(host='0.0.0.0', port=8008, debug=True)
     elif ((args.rest > 1) or ((args.rest == 1) and (args.output is not None))):
         print('command is not well formulated')
     else:
