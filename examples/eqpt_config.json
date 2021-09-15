@@ -35,8 +35,8 @@
             "gain_min": 12,
             "p_max": 22,
             "nf_coef": [-8.104e-4,-6.221e-2,-5.889e-1,37.62],
-            "allowed_for_design": false
-            },          
+            "allowed_for_design": true
+            },
             {
             "type_variety": "standard",
             "type_def": "openroadm",
@@ -44,8 +44,32 @@
             "gain_min": 12,
             "p_max": 22,
             "nf_coef": [-5.952e-4,-6.250e-2,-1.071,28.99],
+            "allowed_for_design": true
+            },
+
+
+
+	    {
+            "type_variety": "pre_amp1",
+            "type_def": "openroadm",
+            "gain_flatmax": 27,
+            "gain_min": 11,
+            "p_max": 22,
+            "nf_coef": [-1.89596194e-03,-1.05442074e-01,-1.32365652e+00,2.83282777e+01],
             "allowed_for_design": false
             },
+	    {
+            "type_variety": "booster1",
+            "type_def": "openroadm",
+            "gain_flatmax": 27,
+            "gain_min": 11,
+            "p_max": 22,
+            "nf_coef": [0,0,0,80],
+            "allowed_for_design": false
+            },
+
+
+
             {
             "type_variety": "std_high_gain",
             "type_def": "variable_gain",
@@ -191,7 +215,7 @@
       ],
       "Span":[{
             "power_mode":true,
-            "delta_power_range_db": [-2,3,0.5],
+            "delta_power_range_db": [0,0,0.5],
             "max_fiber_lineic_loss_for_raman": 0.25,
             "target_extended_gain": 2.5,
             "max_length": 150,
@@ -205,10 +229,10 @@
       ],
       "Roadm":[{
             "target_pch_out_db": -20,
-            "add_drop_osnr": 38,
+            "add_drop_osnr": 30,
             "restrictions": {
-                            "preamp_variety_list":[],
-                            "booster_variety_list":[]
+                            "preamp_variety_list":["pre_amp1"],
+                            "booster_variety_list":["booster1"]
                             }            
             }],
       "SI":[{
@@ -216,7 +240,7 @@
             "baud_rate": 32e9,
             "f_max":195.1e12,
             "spacing": 50e9,
-            "power_dbm": 0,
+            "power_dbm": 2,
             "power_range_db": [0,0,1],
             "roll_off": 0.15,
             "tx_osnr": 40,
@@ -253,6 +277,29 @@
                        }
                    ]
             },
+
+	    {
+            "type_variety": "openroadm-beta1",
+            "frequency":{
+                        "min": 191.35e12,
+                        "max": 196.1e12
+                        },
+            "mode":[
+                       {
+
+                       "format": "W100G",
+                       "baud_rate": 28e9,
+                       "OSNR": 17,
+                       "bit_rate": 100e9,
+                       "roll_off": 0.15,
+                       "tx_osnr": 33,
+                       "min_spacing": 37.5e9,
+                       "cost":1
+                       }
+                   ]
+            },
+
+
             {
             "type_variety": "Voyager",
             "frequency":{

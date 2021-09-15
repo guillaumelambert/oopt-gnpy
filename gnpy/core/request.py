@@ -330,13 +330,13 @@ def compute_constrained_path(network, req):
             # last node which is the transceiver)
             # if all nodes i n node_list are LOOSE constraint, skip the constraints and find
             # a path w/o constraints, else there is no possible path
-            if nodes_list[:-len("STRICT")]:
+            if nodes_list[:-len(['STRICT'])]:
                 print(f'\x1b[1;33;40m'+f'Request {req.request_id} could not find a path crossing ' +\
-                      f'{[el.uid for el in nodes_list[:-len("STRICT")]]} in network topology'+ '\x1b[0m')
+                      f'{[el.uid for el in nodes_list[:-len(["STRICT"])]]} in network topology'+ '\x1b[0m')
             else:
                 print(f'\x1b[1;33;40m'+f'User include_node constraints could not be applied ' +\
                       f'(invalid names specified)'+ '\x1b[0m')
-            if 'STRICT' not in req.loose_list[:-len('STRICT')]:
+            if 'STRICT' not in req.loose_list[:-len(['STRICT'])]:
                 msg = f'\x1b[1;33;40m'+f'Request {req.request_id} could not find a path with user_' +\
                       f'include node constraints' + '\x1b[0m'
                 LOGGER.info(msg)
@@ -385,7 +385,9 @@ def propagate(path, req, equipment):
         req.power, req.spacing)
     for el in path:
         si = el(si)
+        print(el)
     path[-1].update_snr(req.tx_osnr, equipment['Roadm']['default'].add_drop_osnr)
+    print(path[-1])
     return path
 
 def propagate2(path, req, equipment):

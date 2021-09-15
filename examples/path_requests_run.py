@@ -21,7 +21,7 @@ from json import dumps, loads
 from numpy import mean
 from gnpy.core.service_sheet import convert_service_sheet, Request_element, Element
 from gnpy.core.utils import load_json
-from gnpy.core.network import load_network, build_network, save_network
+from gnpy.core.network import load_network, build_network, save_network, network_from_json
 from gnpy.core.equipment import load_equipment, trx_mode_params, automatic_nch
 from gnpy.core.elements import Transceiver, Roadm
 from gnpy.core.utils import db2lin, lin2db
@@ -37,6 +37,10 @@ from gnpy.core.spectrum_assignment import (build_oms_list, pth_assign_spectrum)
 from copy import copy, deepcopy
 from textwrap import dedent
 from math import ceil
+
+from flask import Flask, jsonify, make_response, request
+from flask_restful import Api, Resource, reqparse, fields
+from flask_httpauth import HTTPBasicAuth
 
 #EQPT_LIBRARY_FILENAME = Path(__file__).parent / 'eqpt_config.json'
 
@@ -58,6 +62,13 @@ PARSER.add_argument('-bi', '--bidir', action='store_true',\
 PARSER.add_argument('-v', '--verbose', action='count', default=0,\
                     help='increases verbosity for each occurence')
 PARSER.add_argument('-o', '--output', type=Path)
+PARSER.add_argument('-r', '--rest', action='count', default=0, help='use the REST API')
+
+NETWORK_FILENAME = 'topoDemov1.json' #'disagregatedTopoDemov1.json' #
+
+APP = Flask(__name__, static_url_path="")
+API = Api(APP)
+AUTH = HTTPBasicAuth()
 
 
 def requests_from_json(json_data, equipment):
@@ -360,32 +371,9 @@ def path_result_json(pathresult):
     }
     return data
 
-def main(args):
-    """ main function that calls all functions
+def compute_requests(network, data, equipment):
+    """ Main program calling functions
     """
-    LOGGER.info(f'Computing path requests {args.service_filename} into JSON format')
-    print('\x1b[1;34;40m' +\
-          f'Computing path requests {args.service_filename} into JSON format'+ '\x1b[0m')
-    # for debug
-    # print( args.eqpt_filename)
-
-    try:
-        data = load_requests(args.service_filename, args.eqpt_filename, args.bidir)
-        equipment = load_equipment(args.eqpt_filename)
-        network = load_network(args.network_filename, equipment)
-    except EquipmentConfigError as this_e:
-        print(f'{ansi_escapes.red}Configuration error in the equipment library:{ansi_escapes.reset} {this_e}')
-        exit(1)
-    except NetworkTopologyError as this_e:
-        print(f'{ansi_escapes.red}Invalid network definition:{ansi_escapes.reset} {this_e}')
-        exit(1)
-    except ConfigurationError as this_e:
-        print(f'{ansi_escapes.red}Configuration error:{ansi_escapes.reset} {this_e}')
-        exit(1)
-    except ServiceError as this_e:
-        print(f'{ansi_escapes.red}Service error:{ansi_escapes.reset} {this_e}')
-        exit(1)
-
     # Build the network once using the default power defined in SI in eqpt config
     # TODO power density: db2linp(ower_dbm": 0)/power_dbm": 0 * nb channels as defined by
     # spacing, f_min and f_max
@@ -394,7 +382,7 @@ def main(args):
     p_total_db = p_db + lin2db(automatic_nch(equipment['SI']['default'].f_min,\
         equipment['SI']['default'].f_max, equipment['SI']['default'].spacing))
     build_network(network, equipment, p_db, p_total_db)
-    save_network(args.network_filename, network)
+    save_network(ARGS.network_filename, network)
 
     oms_list = build_oms_list(network, equipment)
 
@@ -402,7 +390,7 @@ def main(args):
         rqs = requests_from_json(data, equipment)
     except ServiceError as this_e:
         print(f'{ansi_escapes.red}Service error:{ansi_escapes.reset} {this_e}')
-        exit(1)
+        raise this_e
     # check that request ids are unique. Non unique ids, may
     # mess the computation: better to stop the computation
     all_ids = [r.request_id for r in rqs]
@@ -411,12 +399,13 @@ def main(args):
             all_ids.remove(item)
         msg = f'Requests id {all_ids} are not unique'
         LOGGER.critical(msg)
-        exit()
+        raise ServiceError(msg)
     try:
         rqs = correct_route_list(network, rqs)
     except ServiceError as this_e:
         print(f'{ansi_escapes.red}Service error:{ansi_escapes.reset} {this_e}')
-        exit(1)
+        raise this_e
+        #exit(1)
     # pths = compute_path(network, equipment, rqs)
     dsjn = disjunctions_from_json(data)
 
@@ -440,7 +429,7 @@ def main(args):
         pths = compute_path_dsjctn(network, equipment, rqs, dsjn)
     except DisjunctionError as this_e:
         print(f'{ansi_escapes.red}Disjunction error:{ansi_escapes.reset} {this_e}')
-        exit(1)
+        raise this_e
 
     print('\x1b[1;34;40m' + f'Propagating on selected path' + '\x1b[0m')
     propagatedpths, reversed_pths, reversed_propagatedpths = \
@@ -493,20 +482,116 @@ def main(args):
     print('\x1b[1;33;40m'+f'Result summary shows mean SNR and OSNR (average over all channels)' +\
           '\x1b[0m')
 
-    if args.output:
+    return propagatedpths, reversed_propagatedpths, rqs
+
+
+def launch_cli(network, data, equipment):
+    """ Compute requests using network, data and equipment with client line interface
+    """
+    propagatedpths, reversed_propagatedpths, rqs = compute_requests(network, data, equipment)
+    #Generate the output
+    if ARGS.output :
         result = []
         # assumes that list of rqs and list of propgatedpths have same order
         for i, pth in enumerate(propagatedpths):
             result.append(Result_element(rqs[i], pth, reversed_propagatedpths[i]))
         temp = path_result_json(result)
-        fnamecsv = f'{str(args.output)[0:len(str(args.output))-len(str(args.output.suffix))]}.csv'
-        fnamejson = f'{str(args.output)[0:len(str(args.output))-len(str(args.output.suffix))]}.json'
+        fnamecsv = f'{str(ARGS.output)[0:len(str(ARGS.output))-len(str(ARGS.output.suffix))]}.csv'
+        fnamejson = f'{str(ARGS.output)[0:len(str(ARGS.output))-len(str(ARGS.output.suffix))]}.json'
         with open(fnamejson, 'w', encoding='utf-8') as fjson:
             fjson.write(dumps(path_result_json(result), indent=2, ensure_ascii=False))
             with open(fnamecsv, "w", encoding='utf-8') as fcsv:
                 jsontocsv(temp, equipment, fcsv)
-                print('\x1b[1;34;40m'+f'saving in {args.output} and {fnamecsv}'+ '\x1b[0m')
+                print('\x1b[1;34;40m'+f'saving in {ARGS.output} and {fnamecsv}'+ '\x1b[0m')
 
+class GnpyAPI(Resource):
+    """ Compute requests using network, data and equipment with rest api
+    """
+    decorators = [AUTH.login_required]
+    @AUTH.get_password
+    def get_password(username):
+        """ gets password (fixed to gnpy in this code)
+        """
+        if username == 'gnpy':
+            return 'gnpy'
+        return None
+
+    @AUTH.error_handler
+    def unauthorized():
+        """ return 403 instead of 401 to prevent browsers from displaying the default
+            auth dialog
+        """
+        return make_response(jsonify({'message': 'Unauthorized access'}), 403)
+
+    def post(self):
+        """ returns response
+        """
+        print(request.is_json)
+        content = request.get_json()
+        content1 = content['gnpy-api']
+        topo_json = content1['topology-file']
+        if not topo_json:
+            topo_json = load_json(NETWORK_FILENAME)
+        svc_json = content1['service-file']
+        # Load equipment
+        equipment = load_equipment('eqpt_config.json')
+        #Create load_requests
+        data = svc_json
+        #network = load_network(ARGS.network_filename, equipment)
+        network = network_from_json(topo_json, equipment)
+        # Compute requests using network, data and equipment
+        try:
+            propagatedpths, reversed_propagatedpths, rqs = compute_requests(network, data, equipment)
+            # Generate the output
+            result = []
+            #assumes that list of rqs and list of propgatedpths have same order
+            for i, pth in enumerate(propagatedpths):
+                result.append(Result_element(rqs[i], pth, reversed_propagatedpths[i]))
+
+            return {"result":path_result_json(result)}, 201
+        except ServiceError as this_e:
+            msg = f'Service error: {this_e}'
+            return {"result": msg}, 400
+    def head(self):
+        return 200
+
+API.add_resource(GnpyAPI, '/gnpy/api/v1.0/files', endpoint='files')
+
+def main(args):
+    """ main function that calls all functions
+    """
+    LOGGER.info(f'Computing path requests {args.service_filename} into JSON format')
+    print('\x1b[1;34;40m' +\
+          f'Computing path requests {args.service_filename} into JSON format'+ '\x1b[0m')
+    # for debug
+    # print( args.eqpt_filename)
+
+    try:
+        data = load_requests(args.service_filename, args.eqpt_filename, args.bidir)
+        equipment = load_equipment(args.eqpt_filename)
+        network = load_network(args.network_filename, equipment)
+    except EquipmentConfigError as this_e:
+        print(f'{ansi_escapes.red}Configuration error in the equipment library:{ansi_escapes.reset} {this_e}')
+        exit(1)
+    except NetworkTopologyError as this_e:
+        print(f'{ansi_escapes.red}Invalid network definition:{ansi_escapes.reset} {this_e}')
+        exit(1)
+    except ConfigurationError as this_e:
+        print(f'{ansi_escapes.red}Configuration error:{ansi_escapes.reset} {this_e}')
+        exit(1)
+    except ServiceError as this_e:
+        print(f'{ansi_escapes.red}Service error:{ansi_escapes.reset} {this_e}')
+        exit(1)
+    # input_str = raw_input("How will you use your program: c:[cli] , a:[api] ?")
+    # print(input_str)
+    #
+    if ((args.rest == 1) and (args.output is None)):
+        print('you have chosen the rest mode')
+        APP.run(host='0.0.0.0', port=8008, debug=True)
+    elif ((args.rest > 1) or ((args.rest == 1) and (args.output is not None))):
+        print('command is not well formulated')
+    else:
+        launch_cli(network, data, equipment)
 
 if __name__ == '__main__':
     ARGS = PARSER.parse_args()
